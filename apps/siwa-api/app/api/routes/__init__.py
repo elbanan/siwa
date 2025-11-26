@@ -1,0 +1,14 @@
+from app.api.routes.admin import router as admin_router
+from app.api.routes.auth import router as auth_router
+from app.api.routes.browse import router as browse_router
+from app.api.routes.datasets import router as datasets_router
+from app.api.routes.evaluations import router as evaluations_router
+from app.api.routes.jobs import router as jobs_router
+from app.api.routes.annotations_classification import router as annotations_classification_router
+from app.api.routes.annotations_captioning import router as annotations_captioning_router
+from app.api.routes.annotations_detection import router as annotations_detection_router
+from app.api.routes.annotations_grounding import router as annotations_grounding_router
+from app.api.routes.annotations_text_classification import router as annotations_text_classification_router
+from app.api.routes.models import router as models_router
+from app.api.routes.generate import router as generate_router
+from app.api.routes.generation_tasks import router as generation_tasks_router

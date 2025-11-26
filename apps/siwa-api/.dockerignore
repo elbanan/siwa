@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+siwa.db
+.venv/
+env/
+*.egg-info/
+.DS_Store
+.env
+.env.*
+!.env.docker
+*.log

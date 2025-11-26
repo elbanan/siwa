@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f8fafc;
+  --text: #0f172a;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --muted: #475569;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+a {
+  color: var(--accent);
+}
+
+/* Utility overrides to follow theme tokens */
+.bg-white { background-color: var(--card) !important; }
+.bg-gray-50 { background-color: var(--bg) !important; }
+.bg-gray-100 { background-color: var(--bg) !important; }
+.bg-gray-200 { background-color: var(--border) !important; }
+.bg-gray-300 { background-color: var(--border) !important; }
+
+.border { border-color: var(--border) !important; }
+.border-gray-200 { border-color: var(--border) !important; }
+.border-gray-300 { border-color: var(--border) !important; }
+
+.text-gray-500 { color: var(--muted) !important; }
+.text-gray-600 { color: var(--muted) !important; }
+.text-gray-700 { color: var(--text) !important; }
+.text-gray-800 { color: var(--text) !important; }
+.text-gray-900 { color: var(--text) !important; }
+
+.bg-black { background-color: #0f172a !important; }
+.text-white { color: #f8fafc !important; }
+.hover\:bg-gray-800:hover { background-color: #1f2937 !important; }
+.hover\:bg-gray-50:hover { background-color: #f1f5f9 !important; }

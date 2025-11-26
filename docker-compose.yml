@@ -1,0 +1,30 @@
+services:
+  siwa-api:
+    build:
+      context: ./apps/siwa-api
+    env_file:
+      - ./apps/siwa-api/.env.docker
+    ports:
+      - "8000:8000"
+    volumes:
+      - siwa-data:/siwa/data
+      # Optional: Mount external data directory for user datasets
+      # Set EXTERNAL_DATA_PATH in .env to enable (e.g., EXTERNAL_DATA_PATH=/Users/username/data)
+      - ${EXTERNAL_DATA_PATH:-/tmp/empty}:/external/data
+    restart: unless-stopped
+
+  siwa-web:
+    build:
+      context: ./apps/siwa-web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    env_file:
+      - ./apps/siwa-web/.env.docker
+    ports:
+      - "3000:3000"
+    depends_on:
+      - siwa-api
+    restart: unless-stopped
+
+volumes:
+  siwa-data:
