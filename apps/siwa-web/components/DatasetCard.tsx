@@ -32,9 +32,17 @@ type DatasetCardProps = {
   ds: any;
   onDelete?: (id: string) => void;
   isDeleting?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 };
 
-export default function DatasetCard({ ds, onDelete, isDeleting }: DatasetCardProps) {
+export default function DatasetCard({
+  ds,
+  onDelete,
+  isDeleting,
+  selected = false,
+  onToggleSelect
+}: DatasetCardProps) {
   const { data: session } = useSession();
   const progress = Math.min(Math.max(ds.annotation_progress ?? 0, 0), 100);
   const canExport = session?.role === "owner" || session?.role === "admin";
@@ -56,25 +64,25 @@ export default function DatasetCard({ ds, onDelete, isDeleting }: DatasetCardPro
   const annotateHref = isDetectionTask
     ? `/datasets/${ds.id}/annotate/detection`
     : isGroundingTask
-    ? `/datasets/${ds.id}/annotate/grounding`
-    : isTextAnnotationTask
-    ? `/text-datasets/${ds.id}/annotate/text-classification`
-    : isCaptioningTask
-    ? `/datasets/${ds.id}/annotate/captioning`
-    : `/datasets/${ds.id}/annotate/classification`;
+      ? `/datasets/${ds.id}/annotate/grounding`
+      : isTextAnnotationTask
+        ? `/text-datasets/${ds.id}/annotate/text-classification`
+        : isCaptioningTask
+          ? `/datasets/${ds.id}/annotate/captioning`
+          : `/datasets/${ds.id}/annotate/classification`;
 
   const handleExport = async () => {
     const endpoint = isDetectionTask
       ? `/datasets/${ds.id}/annotations/detection/export`
       : isGroundingTask
-      ? `/datasets/${ds.id}/annotations/grounding/export`
-      : isClassificationTask
-      ? `/datasets/${ds.id}/annotations/classification/export`
-      : isCaptioningTask
-      ? `/datasets/${ds.id}/annotations/captioning/export`
-      : isTextAnnotationTask
-      ? `/datasets/${ds.id}/annotations/text-classification/export`
-      : null;
+        ? `/datasets/${ds.id}/annotations/grounding/export`
+        : isClassificationTask
+          ? `/datasets/${ds.id}/annotations/classification/export`
+          : isCaptioningTask
+            ? `/datasets/${ds.id}/annotations/captioning/export`
+            : isTextAnnotationTask
+              ? `/datasets/${ds.id}/annotations/text-classification/export`
+              : null;
     if (!endpoint) return;
     try {
       const res = await api.get(endpoint);
@@ -87,10 +95,10 @@ export default function DatasetCard({ ds, onDelete, isDeleting }: DatasetCardPro
       const suffix = isDetectionTask
         ? "detections"
         : isGroundingTask
-        ? "grounding"
-        : isCaptioningTask
-        ? "captions"
-        : "annotations";
+          ? "grounding"
+          : isCaptioningTask
+            ? "captions"
+            : "annotations";
       const safeName = (ds.name || suffix).replace(/\s+/g, "_");
       a.download = `${safeName}_${suffix}.json`;
       a.click();
@@ -102,13 +110,26 @@ export default function DatasetCard({ ds, onDelete, isDeleting }: DatasetCardPro
   };
 
   return (
-    <div className="bg-white border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+    <div
+      className={`bg-white border rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow ${selected ? "ring-2 ring-blue-500 border-blue-500" : ""
+        }`}
+    >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="font-semibold text-lg truncate">{ds.name}</h3>
-          <p className="text-sm text-gray-600 mt-0.5">
-            {ds.modality?.toUpperCase()} • {ds.task_type ?? "n/a"}
-          </p>
+        <div className="flex items-start gap-3 min-w-0">
+          {onToggleSelect && (
+            <input
+              type="checkbox"
+              className="mt-1.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              checked={selected}
+              onChange={() => onToggleSelect(ds.id)}
+            />
+          )}
+          <div className="min-w-0">
+            <h3 className="font-semibold text-lg truncate">{ds.name}</h3>
+            <p className="text-sm text-gray-600 mt-0.5">
+              {ds.modality?.toUpperCase()} • {ds.task_type ?? "n/a"}
+            </p>
+          </div>
         </div>
 
         <span
@@ -209,40 +230,39 @@ export default function DatasetCard({ ds, onDelete, isDeleting }: DatasetCardPro
             isCaptioningTask ||
             isTextAnnotationTask ||
             isGroundingTask) && (
-            <>
-              {canAnnotate && (
-                <Link
-                  href={annotateHref}
-                  className="text-sm px-3 py-1.5 rounded-md border hover:bg-gray-50"
-                >
-                  Annotate
-                </Link>
-              )}
-              {canExport && (
-                <button
-                  type="button"
-                  className="text-sm px-3 py-1.5 rounded-md border hover:bg-gray-50 text-left leading-tight"
-                  onClick={handleExport}
-                >
-                  <span>Export JSON</span>
-                  {isDetectionTask && (
-                    <span className="block text-[10px] text-gray-500 mt-0.5">
-                      COCO format
-                    </span>
-                  )}
-                </button>
-              )}
-            </>
-          )}
+              <>
+                {canAnnotate && (
+                  <Link
+                    href={annotateHref}
+                    className="text-sm px-3 py-1.5 rounded-md border hover:bg-gray-50"
+                  >
+                    Annotate
+                  </Link>
+                )}
+                {canExport && (
+                  <button
+                    type="button"
+                    className="text-sm px-3 py-1.5 rounded-md border hover:bg-gray-50 text-left leading-tight"
+                    onClick={handleExport}
+                  >
+                    <span>Export JSON</span>
+                    {isDetectionTask && (
+                      <span className="block text-[10px] text-gray-500 mt-0.5">
+                        COCO format
+                      </span>
+                    )}
+                  </button>
+                )}
+              </>
+            )}
 
           {onDelete && (
             <button
               type="button"
-              className={`text-sm px-3 py-1.5 rounded-md border ${
-                isDeleting
+              className={`text-sm px-3 py-1.5 rounded-md border ${isDeleting
                   ? "bg-red-50 border-red-100 text-red-300 cursor-not-allowed"
                   : "border-red-200 text-red-600 hover:bg-red-50"
-              }`}
+                }`}
               disabled={isDeleting}
               onClick={() => onDelete(ds.id)}
             >

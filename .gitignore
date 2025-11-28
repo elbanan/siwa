@@ -1,2 +1,6 @@
 .next/
 node_modules/
+.DS_Store
+apps/siwa-api/siwa.db
+.DS_Store
+toggle_local_data.sh

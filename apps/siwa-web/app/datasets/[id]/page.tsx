@@ -23,6 +23,7 @@ import {
   FILE_PATTERN_PRESETS,
   IMAGE_TASK_OPTIONS,
   SEGMENTATION_FORMATS,
+  DETECTION_FORMATS,
 } from "../../../lib/datasetOptions";
 import { PROJECT_NAME } from "../../../lib/systemInfo";
 
@@ -33,6 +34,9 @@ const REPRESENTATION_HINTS: Record<string, string> = {
   bounding_box: "Normalized bounding boxes (x_center y_center width height).",
   points: "Keypoints listed as normalized x,y pairs.",
   other: "Custom layout defined by your workflow.",
+  yolo: "YOLO txt: class x_center y_center width height (all normalized).",
+  pascal_voc: "Pascal VOC: class xmin ymin xmax ymax in pixels.",
+  coco_bbox: "COCO bbox: class x y width height in pixels.",
 };
 
 const normalizePatternValue = (value: string) =>
@@ -103,6 +107,7 @@ export default function DatasetDetailsPage() {
   const [annLabelColumn, setAnnLabelColumn] = useState("");
   const [annAnnotationColumn, setAnnAnnotationColumn] = useState("");
   const [annRepresentation, setAnnRepresentation] = useState("");
+  const [annNegativeValue, setAnnNegativeValue] = useState("");
   const [annotationFolderLabelMapText, setAnnotationFolderLabelMapText] = useState("");
   const [annotationFolderExtension, setAnnotationFolderExtension] = useState(".txt");
 
@@ -181,6 +186,7 @@ export default function DatasetDetailsPage() {
         setAnnLabelColumn(annCfg.label_column ?? "");
         setAnnAnnotationColumn(annCfg.annotation_column ?? "");
         setAnnRepresentation(annCfg.annotation_representation ?? "");
+        setAnnNegativeValue(annCfg.negative_value ?? "");
         const incomingMap = annCfg.label_map ?? {};
         const mapText = Object.keys(incomingMap).length
           ? Object.entries(incomingMap)
@@ -208,15 +214,16 @@ export default function DatasetDetailsPage() {
         setAnnLabelColumn("");
         setAnnAnnotationColumn("");
         setAnnRepresentation("");
+        setAnnNegativeValue("");
         setAnnotationFolderLabelMapText("");
         setAnnotationFolderExtension(".txt");
       }
       setCsvColumns([]);
       setCsvColumnsError("");
     } catch (e: any) {
-      setError(e?.response?.data?.detail ?? "Failed to load dataset");
-    }
-  }, [datasetId, defaultPatternValue, syncPatternPresetFromValue, router]);
+        setError(e?.response?.data?.detail ?? "Failed to load dataset");
+      }
+    }, [datasetId, defaultPatternValue, syncPatternPresetFromValue, router]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -236,6 +243,23 @@ export default function DatasetDetailsPage() {
       .map((c) => c.trim())
       .filter(Boolean);
   }, [classNamesText]);
+
+  const classNamesInline = useMemo(() => {
+    return classNamesText
+      .split("\n")
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .join(", ");
+  }, [classNamesText]);
+
+  const onClassNamesInlineChange = (value: string) => {
+    const normalized = value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .join("\n");
+    setClassNamesText(normalized);
+  };
 
   const parseJson = (text: string, label: string) => {
     if (!text.trim()) return undefined;
@@ -279,10 +303,24 @@ export default function DatasetDetailsPage() {
   const isCaptioning = taskType === "captioning";
   const isGrounding = taskType === "grounding";
   const requiresCsvAnnotations = hasAnnotations && annFormat === "csv";
-  const needsLabelColumn = requiresCsvAnnotations && isClassification;
+  const needsLabelColumn =
+    requiresCsvAnnotations && isClassification;
   const needsAnnotationColumn = requiresCsvAnnotations && (isSegmentation || isDetection);
   const needsAnnotationRepresentation =
     hasAnnotations && (isSegmentation || (isDetection && annFormat !== "json"));
+  const representationOptions = useMemo(
+    () => (isDetection ? DETECTION_FORMATS : SEGMENTATION_FORMATS),
+    [isDetection]
+  );
+  useEffect(() => {
+    if (!annRepresentation && needsAnnotationRepresentation) {
+      if (isDetection) {
+        setAnnRepresentation(DETECTION_FORMATS[0]?.value || "");
+      } else if (SEGMENTATION_FORMATS.length > 0) {
+        setAnnRepresentation(SEGMENTATION_FORMATS[0].value);
+      }
+    }
+  }, [annRepresentation, needsAnnotationRepresentation, isDetection]);
 
   const loadCsvColumns = async () => {
     if (!annPath.trim()) {
@@ -451,8 +489,13 @@ export default function DatasetDetailsPage() {
               if (needsAnnotationRepresentation) {
                 config.annotation_representation = annRepresentation;
               }
-              return config;
-            })(),
+              if (annFormat === "csv" && isDetection) {
+                if (annNegativeValue.trim()) {
+                  config.negative_value = annNegativeValue.trim();
+                }
+              }
+            return config;
+          })(),
           }
           : null,
         has_annotations: hasAnnotations,
@@ -849,56 +892,73 @@ export default function DatasetDetailsPage() {
                 </div>
 
                 {annFormat === "csv" && (
-                  <div>
-                    <label className="text-sm font-medium">Image ID column</label>
-                    {csvColumns.length > 0 ? (
-                      <select
-                        className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
-                        value={annImageColumn}
-                        onChange={(e) => setAnnImageColumn(e.target.value)}
-                      >
-                        <option value="">Select column</option>
-                        {csvColumns.map((col) => (
-                          <option key={col} value={col}>
-                            {col}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
-                        placeholder="image_id"
-                        value={annImageColumn}
-                        onChange={(e) => setAnnImageColumn(e.target.value)}
-                      />
-                    )}
-                  </div>
-                )}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium">Image ID column</label>
+                      {csvColumns.length > 0 ? (
+                        <select
+                          className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                          value={annImageColumn}
+                          onChange={(e) => setAnnImageColumn(e.target.value)}
+                        >
+                          <option value="">Select column</option>
+                          {csvColumns.map((col) => (
+                            <option key={col} value={col}>
+                              {col}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                          placeholder="image_id"
+                          value={annImageColumn}
+                          onChange={(e) => setAnnImageColumn(e.target.value)}
+                        />
+                      )}
+                    </div>
 
-                {needsLabelColumn && (
-                  <div>
-                    <label className="text-sm font-medium">Label/class column</label>
-                    {csvColumns.length > 0 ? (
-                      <select
-                        className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
-                        value={annLabelColumn}
-                        onChange={(e) => setAnnLabelColumn(e.target.value)}
-                      >
-                        <option value="">Select column</option>
-                        {csvColumns.map((col) => (
-                          <option key={col} value={col}>
-                            {col}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
+                    {needsLabelColumn && (
+                      <div>
+                        <label className="text-sm font-medium">Label/class column</label>
+                        {csvColumns.length > 0 ? (
+                          <select
+                            className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                            value={annLabelColumn}
+                            onChange={(e) => setAnnLabelColumn(e.target.value)}
+                          >
+                            <option value="">Select column</option>
+                            {csvColumns.map((col) => (
+                              <option key={col} value={col}>
+                                {col}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                            placeholder="label"
+                            value={annLabelColumn}
+                            onChange={(e) => setAnnLabelColumn(e.target.value)}
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-sm font-medium">
+                        Class names (comma separated)
+                      </label>
                       <input
                         className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
-                        placeholder="label"
-                        value={annLabelColumn}
-                        onChange={(e) => setAnnLabelColumn(e.target.value)}
+                        placeholder="e.g. cat, dog, pedestrian"
+                        value={classNamesInline}
+                        onChange={(e) => onClassNamesInlineChange(e.target.value)}
                       />
-                    )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Updates the dataset&apos;s class list used in the annotation UI.
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -935,7 +995,7 @@ export default function DatasetDetailsPage() {
                       <label className="text-sm font-medium">Annotation representation</label>
                       <span
                         className="text-xs w-5 h-5 rounded-full border border-gray-300 flex items-center justify-center cursor-help"
-                        title="Choose the format that matches your annotation files (mask, RLE, polygons, bounding boxes, etc.)."
+                        title="Choose the format that matches your annotation files (mask, polygons, bounding boxes, etc.)."
                       >
                         ?
                       </span>
@@ -946,7 +1006,7 @@ export default function DatasetDetailsPage() {
                       onChange={(e) => setAnnRepresentation(e.target.value)}
                     >
                       <option value="">Select format</option>
-                      {SEGMENTATION_FORMATS.map((format) => (
+                      {representationOptions.map((format) => (
                         <option
                           key={format.value}
                           value={format.value}
@@ -955,9 +1015,29 @@ export default function DatasetDetailsPage() {
                           {format.label}
                         </option>
                       ))}
-                    </select>
+                  </select>
+                </div>
+              )}
+
+              {annFormat === "csv" && isDetection && (
+                <div className="space-y-3 border-t pt-3">
+                  <div>
+                    <label className="text-sm font-medium">
+                      Negative value (optional)
+                    </label>
+                    <input
+                      className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                      placeholder="e.g. negative"
+                      value={annNegativeValue}
+                      onChange={(e) => setAnnNegativeValue(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Rows with this label value are treated as negative examples with
+                      no boxes.
+                    </p>
                   </div>
-                )}
+                </div>
+              )}
 
                 {annFormat === "folder" && isClassification && (
                   <p className="text-xs text-gray-500">

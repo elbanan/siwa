@@ -23,6 +23,8 @@ export default function DatasetsPage() {
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   useEffect(() => {
     // Wait until session is ready and authenticated
@@ -51,6 +53,24 @@ export default function DatasetsPage() {
     return out;
   }, [datasets, query, filterStatus]);
 
+  const handleToggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === filtered.length && filtered.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((d) => d.id)));
+    }
+  };
+
   const handleDelete = async (datasetId: string) => {
     if (!confirm("Delete this dataset? This cannot be undone.")) return;
     setError("");
@@ -58,12 +78,46 @@ export default function DatasetsPage() {
     try {
       await api.delete(`/datasets/${datasetId}`);
       setDatasets((prev) => prev.filter((d) => d.id !== datasetId));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(datasetId);
+        return next;
+      });
     } catch (e: any) {
       const detail = e?.response?.data?.detail ?? "Failed to delete dataset";
       setError(detail);
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selectedIds.size} datasets? This cannot be undone.`)) return;
+    setError("");
+    setIsBulkDeleting(true);
+
+    // We'll try to delete all, and report errors if any
+    const ids = Array.from(selectedIds);
+    const failures: string[] = [];
+
+    for (const id of ids) {
+      try {
+        await api.delete(`/datasets/${id}`);
+        setDatasets((prev) => prev.filter((d) => d.id !== id));
+      } catch (e: any) {
+        console.error(`Failed to delete ${id}`, e);
+        failures.push(id);
+      }
+    }
+
+    if (failures.length > 0) {
+      setError(`Failed to delete ${failures.length} datasets.`);
+      // Keep failed ones selected
+      setSelectedIds(new Set(failures));
+    } else {
+      setSelectedIds(new Set());
+    }
+    setIsBulkDeleting(false);
   };
 
   // If user is not logged in, don't call API; show CTA
@@ -113,6 +167,21 @@ export default function DatasetsPage() {
       </section>
 
       <section className="bg-white border rounded-xl p-3 flex flex-col md:flex-row gap-3 md:items-center">
+        <div className="flex items-center gap-2 pl-2">
+          <input
+            type="checkbox"
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            checked={filtered.length > 0 && selectedIds.size === filtered.length}
+            onChange={handleSelectAll}
+            disabled={filtered.length === 0}
+          />
+          <span className="text-sm text-gray-500 whitespace-nowrap">
+            {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select all"}
+          </span>
+        </div>
+
+        <div className="h-6 w-px bg-gray-200 hidden md:block mx-2"></div>
+
         <input
           className="w-full md:flex-1 border rounded-xl px-3 py-2 text-sm"
           placeholder="Search datasets by name or tag..."
@@ -130,6 +199,16 @@ export default function DatasetsPage() {
           <option value="configured">Configured</option>
           <option value="invalid_config">Invalid config</option>
         </select>
+
+        {selectedIds.size > 0 && (
+          <button
+            onClick={handleBulkDelete}
+            disabled={isBulkDeleting}
+            className="px-4 py-2 rounded-lg bg-red-50 text-red-600 border border-red-100 text-sm font-medium hover:bg-red-100 whitespace-nowrap"
+          >
+            {isBulkDeleting ? "Deleting..." : `Delete (${selectedIds.size})`}
+          </button>
+        )}
       </section>
 
       {status === "loading" && (
@@ -161,6 +240,8 @@ export default function DatasetsPage() {
               ds={ds}
               onDelete={handleDelete}
               isDeleting={deletingId === ds.id}
+              selected={selectedIds.has(ds.id)}
+              onToggleSelect={handleToggleSelect}
             />
           ))}
         </div>

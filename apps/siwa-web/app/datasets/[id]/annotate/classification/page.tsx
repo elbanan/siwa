@@ -124,6 +124,24 @@ export default function ClassificationAnnotatePage({
       });
   }, [status, datasetId, currentPath]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        setIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight") {
+        setIndex((i) => Math.min(files.length - 1, i + 1));
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [files.length]);
+
   const progressPct = summary
     ? summary.labeled >= summary.total && summary.total > 0
       ? 100
@@ -134,8 +152,8 @@ export default function ClassificationAnnotatePage({
 
   const viewUrl = currentPath
     ? `${process.env.NEXT_PUBLIC_API_URL}/datasets/${datasetId}/view?path=${encodeURIComponent(
-        currentPath
-      )}`
+      currentPath
+    )}`
     : "";
 
   const thumbUrlFor = (p: string) =>
@@ -295,11 +313,10 @@ export default function ClassificationAnnotatePage({
                 Instructions
               </button>
               <button
-                className={`text-sm px-3 py-1.5 rounded-md border ${
-                  onlyUnlabeled
-                    ? "bg-black text-white border-black"
-                    : "hover:bg-gray-50"
-                }`}
+                className={`text-sm px-3 py-1.5 rounded-md border ${onlyUnlabeled
+                  ? "bg-black text-white border-black"
+                  : "hover:bg-gray-50"
+                  }`}
                 onClick={() => setOnlyUnlabeled((prev) => !prev)}
               >
                 {onlyUnlabeled ? "Showing unlabeled" : "Unlabeled Only"}
@@ -403,17 +420,33 @@ export default function ClassificationAnnotatePage({
                 <button
                   key={c}
                   onClick={() => toggleLabel(c)}
-                  className={`w-full text-left px-3 py-2 rounded-md border text-sm transition ${
-                    active
-                      ? "bg-black text-white border-black"
-                      : "hover:bg-gray-50"
-                  }`}
+                  className={`w-full text-left px-3 py-2 rounded-md border text-sm transition ${active
+                    ? "bg-black text-white border-black"
+                    : "hover:bg-gray-50"
+                    }`}
                 >
                   {c}
                 </button>
               );
             })}
           </div>
+
+          {labels.filter(l => !classes.includes(l)).length > 0 && (
+            <div className="space-y-1 pt-2 border-t">
+              <div className="text-xs font-medium text-gray-500">
+                Extra labels (from file)
+              </div>
+              {labels.filter(l => !classes.includes(l)).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => toggleLabel(c)}
+                  className="w-full text-left px-3 py-2 rounded-md border text-sm transition bg-black text-white border-black"
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Prev/Next */}
           <div className="pt-2 flex gap-2 flex-wrap">
@@ -475,9 +508,8 @@ export default function ClassificationAnnotatePage({
                       setIndex(i);
                       setJumpOpen(false);
                     }}
-                    className={`border rounded-md overflow-hidden ${
-                      active ? "ring-2 ring-black" : "hover:shadow-sm"
-                    }`}
+                    className={`border rounded-md overflow-hidden ${active ? "ring-2 ring-black" : "hover:shadow-sm"
+                      }`}
                   >
                     <div className="relative">
                       {/* eslint-disable-next-line @next/next/no-img-element */}

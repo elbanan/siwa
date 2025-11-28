@@ -115,6 +115,24 @@ export default function DetectionAnnotatePage({
     }
   }, [classes, selectedLabel]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        setIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight") {
+        setIndex((i) => Math.min(files.length - 1, i + 1));
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [files.length]);
+
   const viewUrl = currentPath
     ? `${process.env.NEXT_PUBLIC_API_URL}/datasets/${datasetId}/view?path=${encodeURIComponent(
       currentPath
@@ -455,8 +473,8 @@ export default function DetectionAnnotatePage({
               </button>
               <button
                 className={`text-sm px-3 py-1.5 rounded-md border ${onlyUnlabeled
-                    ? "bg-black text-white border-black"
-                    : "hover:bg-gray-50"
+                  ? "bg-black text-white border-black"
+                  : "hover:bg-gray-50"
                   }`}
                 onClick={() => setOnlyUnlabeled((prev) => !prev)}
               >
@@ -594,8 +612,8 @@ export default function DetectionAnnotatePage({
                 <div
                   key={box.id}
                   className={`border rounded-lg p-2 text-xs space-y-1 ${selectedBoxId === box.id
-                      ? "border-black bg-gray-50"
-                      : "border-gray-200"
+                    ? "border-black bg-gray-50"
+                    : "border-gray-200"
                     }`}
                   onClick={() => setSelectedBoxId(box.id)}
                 >

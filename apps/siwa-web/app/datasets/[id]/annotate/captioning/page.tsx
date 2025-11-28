@@ -126,6 +126,24 @@ export default function CaptioningAnnotatePage({
       });
   }, [status, datasetId, currentPath]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        setIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight") {
+        setIndex((i) => Math.min(files.length - 1, i + 1));
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [files.length]);
+
   const progressPct = summary
     ? summary.labeled >= summary.total && summary.total > 0
       ? 100
@@ -134,8 +152,8 @@ export default function CaptioningAnnotatePage({
 
   const viewUrl = currentPath
     ? `${process.env.NEXT_PUBLIC_API_URL}/datasets/${datasetId}/view?path=${encodeURIComponent(
-        currentPath
-      )}`
+      currentPath
+    )}`
     : "";
 
   const thumbUrlFor = (p: string) =>
@@ -294,12 +312,12 @@ export default function CaptioningAnnotatePage({
               >
                 {onlyUnlabeled ? "Showing unlabeled" : "Unlabeled Only"}
               </button>
-          <Link
-            href={`/datasets/${datasetId}/annotations/captioning/summary`}
-            className={`${toolbarButton} text-center`}
-          >
-            View summary
-          </Link>
+              <Link
+                href={`/datasets/${datasetId}/annotations/captioning/summary`}
+                className={`${toolbarButton} text-center`}
+              >
+                View summary
+              </Link>
               <button className={toolbarButton} onClick={() => setJumpOpen(true)}>
                 Jump to…
               </button>
@@ -448,9 +466,8 @@ export default function CaptioningAnnotatePage({
                       setIndex(i);
                       setJumpOpen(false);
                     }}
-                    className={`border rounded-md overflow-hidden ${
-                      active ? "ring-2 ring-black" : "hover:shadow-sm"
-                    }`}
+                    className={`border rounded-md overflow-hidden ${active ? "ring-2 ring-black" : "hover:shadow-sm"
+                      }`}
                   >
                     <div className="relative">
                       {/* eslint-disable-next-line @next/next/no-img-element */}

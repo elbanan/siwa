@@ -7,7 +7,7 @@ from typing import Dict, List
 from uuid import uuid4
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,7 @@ from app.services.grounding_defaults import (
     load_grounding_text_lookup,
     default_grounding_text_for_path,
 )
+from app.services.dataset_scanner import refresh_dataset_cached_counts
 
 router = APIRouter(prefix="/datasets", tags=["annotations-grounding"])
 
@@ -165,6 +166,7 @@ def get_grounding_annotation(
 def upsert_grounding_annotation(
     dataset_id: str,
     payload: GroundingAnnUpsert,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -244,6 +246,7 @@ def upsert_grounding_annotation(
         ds.annotation_status = "needs_annotation"
     db.add(ds)
     db.commit()
+    background.add_task(refresh_dataset_cached_counts, dataset_id)
 
     return GroundingAnnOut(
         path=payload.path,

@@ -72,7 +72,7 @@ def on_startup():
                 id=str(uuid4()),
                 email="admin@local.dev",
                 name="Siwa Admin",
-                password_hash=hash_password("password"),
+                password_hash=hash_password("Admin"),
                 role="owner",
                 active=True,
             )

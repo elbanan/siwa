@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Dict
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -23,7 +23,9 @@ from app.schemas.annotation_detection import (
     DetectionBox,
 )
 from app.services.local_scan import scan_local_folder
+from app.services.detection_csv import has_negative_default, strip_negative_defaults
 from app.services.detection_defaults import detection_defaults_for_files
+from app.services.dataset_scanner import refresh_dataset_cached_counts
 from app.services.image_io import load_image_or_dicom
 
 router = APIRouter(prefix="/datasets", tags=["annotations-detection"])
@@ -106,9 +108,12 @@ def get_detection_annotation(
 
     if not ann:
         defaults = detection_defaults_for_files(ds, [path])
-        default_boxes = defaults.get(norm_path) or []
+        default_boxes_raw = defaults.get(norm_path) or []
+        default_boxes = strip_negative_defaults(default_boxes_raw)
         if default_boxes:
             return DetectionAnnOut(path=path, status="labeled", boxes=default_boxes)
+        if default_boxes_raw and has_negative_default(default_boxes_raw):
+            return DetectionAnnOut(path=path, status="labeled", boxes=[])
         return DetectionAnnOut(path=path, status="unlabeled", boxes=[])
 
     return DetectionAnnOut(
@@ -126,6 +131,7 @@ def get_detection_annotation(
 def upsert_detection_annotation(
     dataset_id: str,
     payload: DetectionAnnUpsert,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -205,6 +211,7 @@ def upsert_detection_annotation(
         ds.annotation_status = "needs_annotation"
     db.add(ds)
     db.commit()
+    background.add_task(refresh_dataset_cached_counts, dataset_id)
 
     return DetectionAnnOut(
         path=payload.path,
@@ -368,11 +375,16 @@ def export_detection_annotations(
                 }
             )
         else:
+            raw_defaults = default_boxes.get(norm, [])
+            filtered_defaults = strip_negative_defaults(raw_defaults)
             default_list = [
-                to_export_box(box, width, height)
-                for box in default_boxes.get(norm, [])
+                to_export_box(box, width, height) for box in filtered_defaults
             ]
-            status = "labeled" if default_list else "unlabeled"
+            status = (
+                "labeled"
+                if filtered_defaults or has_negative_default(raw_defaults)
+                else "unlabeled"
+            )
             export_payload.append(
                 {
                     "path": path,

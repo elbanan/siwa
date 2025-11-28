@@ -7,7 +7,7 @@ from typing import Dict
 from uuid import uuid4
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.schemas.annotation_captioning import (
     CaptionRecordList,
 )
 from app.services.caption_defaults import caption_defaults_for_files
+from app.services.dataset_scanner import refresh_dataset_cached_counts
 from app.services.local_scan import scan_local_folder
 
 router = APIRouter(prefix="/datasets", tags=["annotations-captioning"])
@@ -93,6 +94,7 @@ def get_caption_annotation(
 def upsert_caption_annotation(
     dataset_id: str,
     payload: CaptionAnnotationUpsert,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -159,6 +161,7 @@ def upsert_caption_annotation(
         ds.status = "configured"
     db.add(ds)
     db.commit()
+    background.add_task(refresh_dataset_cached_counts, dataset_id)
 
     return CaptionAnnotationOut(
         path=payload.path,

@@ -124,5 +124,6 @@ def browse_directory(
     return {
         "current_path": path,
         "parent_path": parent_path,
+        "root_path": str(base_path),
         "items": items,
     }

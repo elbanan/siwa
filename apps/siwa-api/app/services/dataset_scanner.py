@@ -25,6 +25,7 @@ from app.services.detection_defaults import (
 )
 from app.services.caption_defaults import caption_defaults_for_files
 
+from app.db.session import SessionLocal
 
 def _collect_dataset_files(ds: Dataset) -> list[str]:
     """Collect all files for a dataset based on its data source configuration."""
@@ -149,6 +150,7 @@ def scan_dataset_counts(ds: Dataset, db: Session) -> tuple[int, int, list[str]]:
                     if ann.labels:
                         labeled += 1
                     continue
+                # default_label_map now returns List[str], so check if it's non-empty
                 if default_label_map.get(path) or default_label_map.get(norm):
                     labeled += 1
     
@@ -180,6 +182,22 @@ def update_cached_counts(
     
     db.add(ds)
     db.commit()
+
+
+def refresh_dataset_cached_counts(dataset_id: str) -> None:
+    """
+    Scan a dataset and refresh its cached counts using a dedicated session.
+    This is safe to run from background tasks.
+    """
+    db = SessionLocal()
+    try:
+        ds = db.get(Dataset, dataset_id)
+        if not ds:
+            return
+        asset_count, labeled_count, _ = scan_dataset_counts(ds, db)
+        update_cached_counts(dataset_id, asset_count, labeled_count, db)
+    finally:
+        db.close()
 
 
 def get_scan_comparison(

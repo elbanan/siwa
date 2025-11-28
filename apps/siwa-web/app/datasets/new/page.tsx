@@ -4,13 +4,14 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "../../../lib/api";
 import {
   FILE_PATTERN_PRESETS,
   IMAGE_TASK_OPTIONS,
   SEGMENTATION_FORMATS,
+  DETECTION_FORMATS,
 } from "../../../lib/datasetOptions";
 import { PROJECT_NAME } from "../../../lib/systemInfo";
 import FileBrowser from "../../../components/FileBrowser";
@@ -23,6 +24,9 @@ const REPRESENTATION_HINTS: Record<string, string> = {
   bounding_box: "Normalized bounding boxes (x_center y_center width height).",
   points: "Keypoints listed as normalized x,y pairs.",
   other: "Custom layout defined by your workflow.",
+  yolo: "YOLO txt: class x_center y_center width height (all normalized).",
+  pascal_voc: "Pascal VOC: class xmin ymin xmax ymax in pixels.",
+  coco_bbox: "COCO bbox: class x y width height in pixels.",
 };
 
 export default function NewDatasetPage() {
@@ -47,11 +51,14 @@ export default function NewDatasetPage() {
   const [annotationTextColumn, setAnnotationTextColumn] = useState("");
   const [annotationAnnotationColumn, setAnnotationAnnotationColumn] = useState("");
   const [annotationRepresentation, setAnnotationRepresentation] = useState("");
+  const [annotationNegativeValue, setAnnotationNegativeValue] = useState("");
   const [annotationFolderLabelMapText, setAnnotationFolderLabelMapText] = useState("");
+  const [annotationLabelMapFile, setAnnotationLabelMapFile] = useState("");
   const [annotationFolderExtension, setAnnotationFolderExtension] = useState(".txt");
   const [csvColumns, setCsvColumns] = useState<string[]>([]);
   const [loadingColumns, setLoadingColumns] = useState(false);
   const [csvColumnsError, setCsvColumnsError] = useState("");
+  const [classNamesInput, setClassNamesInput] = useState("");
 
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -59,6 +66,8 @@ export default function NewDatasetPage() {
   // File browser state
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
   const [showAnnotationBrowser, setShowAnnotationBrowser] = useState(false);
+  const [showLabelMapFileBrowser, setShowLabelMapFileBrowser] = useState(false);
+  const [loadingLabelMapFile, setLoadingLabelMapFile] = useState(false);
 
   useEffect(() => {
     setCsvColumns([]);
@@ -83,13 +92,27 @@ export default function NewDatasetPage() {
   const isCaptioning = taskType === "captioning";
   const isGrounding = taskType === "grounding";
   const requiresCsvAnnotations = hasAnnotations && annotationFormat === "csv";
-  const needsLabelColumn = requiresCsvAnnotations && isClassification;
+  const needsLabelColumn =
+    requiresCsvAnnotations && isClassification;
   const needsTextColumn =
     requiresCsvAnnotations && (isCaptioning || isGrounding);
   const needsAnnotationColumn = requiresCsvAnnotations && (isSegmentation || isDetection);
   const needsAnnotationRepresentation =
     hasAnnotations &&
     (isSegmentation || (isDetection && annotationFormat !== "json"));
+  const representationOptions = useMemo(
+    () => (isDetection ? DETECTION_FORMATS : SEGMENTATION_FORMATS),
+    [isDetection]
+  );
+  useEffect(() => {
+    if (!annotationRepresentation && needsAnnotationRepresentation) {
+      if (isDetection) {
+        setAnnotationRepresentation(DETECTION_FORMATS[0]?.value || "");
+      } else if (SEGMENTATION_FORMATS.length > 0) {
+        setAnnotationRepresentation(SEGMENTATION_FORMATS[0].value);
+      }
+    }
+  }, [annotationRepresentation, needsAnnotationRepresentation, isDetection]);
   const textColumnLabel = isGrounding ? "Text column" : "Caption column";
   const textColumnPlaceholder = isGrounding ? "text" : "caption";
   const textColumnHint = isGrounding
@@ -146,6 +169,57 @@ export default function NewDatasetPage() {
       );
     } finally {
       setLoadingColumns(false);
+    }
+  };
+
+  const [loadingValues, setLoadingValues] = useState(false);
+
+  const loadCsvValues = async () => {
+    if (!annotationPath.trim() || !annotationLabelColumn.trim()) {
+      alert("Please select a CSV file and a label column first.");
+      return;
+    }
+    setLoadingValues(true);
+    try {
+      const res = await api.post("/datasets/inspect/csv/values", {
+        path: annotationPath,
+        column: annotationLabelColumn,
+      });
+      const values = res.data.values || [];
+      if (values.length > 0) {
+        setClassNamesInput(values.join(", "));
+      } else {
+        alert("No unique values found in the selected column.");
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.response?.data?.detail ?? "Failed to load values.");
+    } finally {
+      setLoadingValues(false);
+    }
+  };
+
+  const loadLabelMapFile = async () => {
+    if (!annotationLabelMapFile.trim()) {
+      alert("Please specify a label map file path first.");
+      return;
+    }
+    setLoadingLabelMapFile(true);
+    try {
+      const res = await api.post("/datasets/inspect/file", {
+        path: annotationLabelMapFile,
+      });
+      const content = res.data.content || "";
+      if (content) {
+        setAnnotationFolderLabelMapText(content);
+      } else {
+        alert("File is empty.");
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.response?.data?.detail ?? "Failed to load file.");
+    } finally {
+      setLoadingLabelMapFile(false);
     }
   };
 
@@ -211,6 +285,11 @@ export default function NewDatasetPage() {
         .map(([, label]) => label)
         .filter(Boolean);
 
+      const manualClassNames = classNamesInput
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
       const annotationConfig =
         hasAnnotations && annotationFormat
           ? (() => {
@@ -227,12 +306,20 @@ export default function NewDatasetPage() {
               if (isDetection && Object.keys(folderLabelMap).length) {
                 cfg.label_map = folderLabelMap;
               }
+              if (annotationLabelMapFile.trim()) {
+                cfg.label_map_file = annotationLabelMapFile.trim();
+              }
               if (annotationFolderExtension.trim()) {
                 cfg.file_extension = annotationFolderExtension.trim();
               }
             }
             if (needsAnnotationRepresentation) {
               cfg.annotation_representation = annotationRepresentation;
+            }
+            if (annotationFormat === "csv" && isDetection) {
+              if (annotationNegativeValue.trim()) {
+                cfg.negative_value = annotationNegativeValue.trim();
+              }
             }
             return cfg;
           })()
@@ -247,6 +334,9 @@ export default function NewDatasetPage() {
         },
       };
 
+      const finalClassNames =
+        manualClassNames.length > 0 ? manualClassNames : folderLabelNames;
+
       const res = await api.post("/datasets", {
         name,
         description,
@@ -258,7 +348,7 @@ export default function NewDatasetPage() {
           ? { format: annotationFormat, config: annotationConfig }
           : null,
         has_annotations: hasAnnotations,
-        class_names: folderLabelNames,
+        class_names: finalClassNames,
       });
 
       api.post(`/datasets/${res.data.id}/validate`).catch(() => {
@@ -298,6 +388,16 @@ export default function NewDatasetPage() {
             setShowAnnotationBrowser(false);
           }}
           onCancel={() => setShowAnnotationBrowser(false)}
+          selectFiles={true}
+        />
+      )}
+      {showLabelMapFileBrowser && (
+        <FileBrowser
+          onSelect={(path) => {
+            setAnnotationLabelMapFile(path);
+            setShowLabelMapFileBrowser(false);
+          }}
+          onCancel={() => setShowLabelMapFileBrowser(false)}
           selectFiles={true}
         />
       )}
@@ -449,6 +549,26 @@ export default function NewDatasetPage() {
                 </p>
               </div>
 
+              {annotationFormat === "csv" && isDetection && (
+                <div className="space-y-3 border-t pt-3">
+                  <div>
+                    <label className="text-sm font-medium">
+                      Negative value (optional)
+                    </label>
+                    <input
+                      className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                      placeholder="e.g. negative"
+                      value={annotationNegativeValue}
+                      onChange={(e) => setAnnotationNegativeValue(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Rows whose label column matches this value are treated as
+                      negatives with no boxes.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="text-sm font-medium">Annotation path</label>
                 <div className="flex flex-col gap-2 mt-1">
@@ -494,56 +614,102 @@ export default function NewDatasetPage() {
               </div>
 
               {annotationFormat === "csv" && (
-                <div>
-                  <label className="text-sm font-medium">Image ID column</label>
-                  {csvColumns.length > 0 ? (
-                    <select
-                      className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
-                      value={annotationImageColumn}
-                      onChange={(e) => setAnnotationImageColumn(e.target.value)}
-                    >
-                      <option value="">Select column</option>
-                      {csvColumns.map((col) => (
-                        <option key={col} value={col}>
-                          {col}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
-                      placeholder="image_id"
-                      value={annotationImageColumn}
-                      onChange={(e) => setAnnotationImageColumn(e.target.value)}
-                    />
-                  )}
-                </div>
-              )}
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">Image ID column</label>
+                    {csvColumns.length > 0 ? (
+                      <select
+                        className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                        value={annotationImageColumn}
+                        onChange={(e) => setAnnotationImageColumn(e.target.value)}
+                      >
+                        <option value="">Select column</option>
+                        {csvColumns.map((col) => (
+                          <option key={col} value={col}>
+                            {col}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                        placeholder="image_id"
+                        value={annotationImageColumn}
+                        onChange={(e) => setAnnotationImageColumn(e.target.value)}
+                      />
+                    )}
+                  </div>
 
-              {needsLabelColumn && (
-                <div>
-                  <label className="text-sm font-medium">Label/class column</label>
-                  {csvColumns.length > 0 ? (
-                    <select
-                      className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
-                      value={annotationLabelColumn}
-                      onChange={(e) => setAnnotationLabelColumn(e.target.value)}
-                    >
-                      <option value="">Select column</option>
-                      {csvColumns.map((col) => (
-                        <option key={col} value={col}>
-                          {col}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
+                  {needsLabelColumn && (
+                    <div>
+                      <label className="text-sm font-medium">
+                        Label/class column or inline values
+                      </label>
+                      {csvColumns.length > 0 ? (
+                        <div className="space-y-2">
+                          <select
+                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                            value={annotationLabelColumn}
+                            onChange={(e) => setAnnotationLabelColumn(e.target.value)}
+                          >
+                            <option value="">Select column</option>
+                            {csvColumns.map((col) => (
+                              <option key={col} value={col}>
+                                {col}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500">
+                            Or list classes manually when no column exists:
+                          </p>
+                          <input
+                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                            placeholder="e.g. pneumonia, normal, other"
+                            value={annotationLabelColumn}
+                            onChange={(e) => setAnnotationLabelColumn(e.target.value)}
+                          />
+                        </div>
+                      ) : (
+                        <input
+                          className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                          placeholder="e.g. pneumonia, normal, other"
+                          value={annotationLabelColumn}
+                          onChange={(e) => setAnnotationLabelColumn(e.target.value)}
+                        />
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Provide the CSV column name or comma-separated class list if
+                        your file doesn't include labels.
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex justify-between items-center">
+                      <label className="text-sm font-medium">
+                        Class names (comma separated)
+                      </label>
+                      {annotationLabelColumn && (
+                        <button
+                          type="button"
+                          onClick={loadCsvValues}
+                          disabled={loadingValues}
+                          className="text-xs text-blue-600 hover:underline disabled:text-gray-400"
+                        >
+                          {loadingValues ? "Loading..." : "Auto-fill from column"}
+                        </button>
+                      )}
+                    </div>
                     <input
                       className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
-                      placeholder="label"
-                      value={annotationLabelColumn}
-                      onChange={(e) => setAnnotationLabelColumn(e.target.value)}
+                      placeholder="e.g. cat, dog, pedestrian"
+                      value={classNamesInput}
+                      onChange={(e) => setClassNamesInput(e.target.value)}
                     />
-                  )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Populates the dataset&apos;s class list so the annotation UI
+                      shows labels even if your CSV lacks a label column.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -608,7 +774,7 @@ export default function NewDatasetPage() {
                     <label className="text-sm font-medium">Annotation representation</label>
                     <span
                       className="text-xs w-5 h-5 rounded-full border border-gray-300 flex items-center justify-center cursor-help"
-                      title="Choose the format that matches your annotation files (mask, RLE, polygons, bounding boxes, etc.)."
+                      title="Choose the format that matches your annotation files (mask, polygons, bounding boxes, etc.)."
                     >
                       ?
                     </span>
@@ -619,7 +785,7 @@ export default function NewDatasetPage() {
                     onChange={(e) => setAnnotationRepresentation(e.target.value)}
                   >
                     <option value="">Select format</option>
-                    {SEGMENTATION_FORMATS.map((format) => (
+                    {representationOptions.map((format) => (
                       <option
                         key={format.value}
                         value={format.value}
@@ -642,6 +808,37 @@ export default function NewDatasetPage() {
                 <div className="space-y-3">
                   <div>
                     <label className="text-sm font-medium">
+                      Label map file (optional)
+                    </label>
+                    <div className="flex gap-2 mt-1">
+                      <input
+                        className="flex-1 border rounded-lg px-3 py-2 text-sm font-mono"
+                        placeholder="e.g. /path/to/labels.txt"
+                        value={annotationLabelMapFile}
+                        onChange={(e) => setAnnotationLabelMapFile(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="text-sm px-3 py-2 rounded-lg border hover:bg-gray-50 whitespace-nowrap"
+                        onClick={() => setShowLabelMapFileBrowser(true)}
+                      >
+                        Browse
+                      </button>
+                      <button
+                        type="button"
+                        className="text-sm px-3 py-2 rounded-lg border hover:bg-gray-50 whitespace-nowrap"
+                        onClick={loadLabelMapFile}
+                        disabled={loadingLabelMapFile || !annotationLabelMapFile.trim()}
+                      >
+                        {loadingLabelMapFile ? "Loading..." : "Auto-fill"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Load label map from an external file. Format: one mapping per line (e.g., "0 person" or "0: person").
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">
                       Label map (index and label per line)
                     </label>
                     <textarea
@@ -652,7 +849,7 @@ export default function NewDatasetPage() {
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       Format: `0 lungs`. The index is the class ID from your annotation
-                      files.
+                      files. Can be auto-filled from the file above.
                     </p>
                   </div>
                   <div>

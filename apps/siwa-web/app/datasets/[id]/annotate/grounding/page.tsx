@@ -190,6 +190,24 @@ export default function GroundingAnnotatePage() {
   }, [status, datasetId, currentPath]);
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        setIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight") {
+        setIndex((i) => Math.min(files.length - 1, i + 1));
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [files.length]);
+
+  useEffect(() => {
     const handleResize = () => {
       if (!imageRef.current || !overlayRef.current) return;
       const imgRect = imageRef.current.getBoundingClientRect();
@@ -208,8 +226,8 @@ export default function GroundingAnnotatePage() {
 
   const viewUrl = currentPath
     ? `${process.env.NEXT_PUBLIC_API_URL}/datasets/${datasetId}/view?path=${encodeURIComponent(
-        currentPath
-      )}`
+      currentPath
+    )}`
     : "";
   const thumbUrlFor = (p: string) =>
     `${process.env.NEXT_PUBLIC_API_URL}/datasets/${datasetId}/thumb?path=${encodeURIComponent(
@@ -340,11 +358,11 @@ export default function GroundingAnnotatePage() {
       prev.map((pair) =>
         pair.id === pairId
           ? {
-              ...pair,
-              text: selectedRange.text,
-              span_start: selectedRange.start,
-              span_end: selectedRange.end,
-            }
+            ...pair,
+            text: selectedRange.text,
+            span_start: selectedRange.start,
+            span_end: selectedRange.end,
+          }
           : pair
       )
     );
@@ -467,12 +485,12 @@ export default function GroundingAnnotatePage() {
               >
                 {onlyUnlabeled ? "Showing unlabeled" : "Unlabeled Only"}
               </button>
-          <Link
-            href={`/datasets/${datasetId}/annotations/grounding/summary`}
-            className={`${toolbarButton} text-center`}
-          >
-            View summary
-          </Link>
+              <Link
+                href={`/datasets/${datasetId}/annotations/grounding/summary`}
+                className={`${toolbarButton} text-center`}
+              >
+                View summary
+              </Link>
               <button className={toolbarButton} onClick={() => setJumpOpen(true)}>
                 Jump to…
               </button>
@@ -549,11 +567,10 @@ export default function GroundingAnnotatePage() {
                     height: `${pair.height * 100}%`,
                     borderColor: color,
                   }}
-                  className={`absolute border-2 pointer-events-auto transition ${
-                    selectedPairId === pair.id
+                  className={`absolute border-2 pointer-events-auto transition ${selectedPairId === pair.id
                       ? "border-black/80"
                       : "border-opacity-80"
-                  }`}
+                    }`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedPairId(pair.id);
@@ -634,9 +651,9 @@ export default function GroundingAnnotatePage() {
                   style={
                     segment.color
                       ? {
-                          backgroundColor: segment.color,
-                          color: "#0f172a",
-                        }
+                        backgroundColor: segment.color,
+                        color: "#0f172a",
+                      }
                       : undefined
                   }
                 >
@@ -657,9 +674,8 @@ export default function GroundingAnnotatePage() {
               {pairs.map((pair, idx) => (
                 <div
                   key={pair.id}
-                  className={`border rounded-lg p-2 text-sm space-y-1 ${
-                    selectedPairId === pair.id ? "border-black/60" : "border-gray-200"
-                  }`}
+                  className={`border rounded-lg p-2 text-sm space-y-1 ${selectedPairId === pair.id ? "border-black/60" : "border-gray-200"
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-[13px]">
@@ -724,9 +740,9 @@ export default function GroundingAnnotatePage() {
             <p className="text-xs text-gray-500">
               Showing {filteredFiles.length || 0} images.
             </p>
+          </div>
         </div>
       </div>
-    </div>
 
       {jumpOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 flex justify-end">
@@ -761,9 +777,8 @@ export default function GroundingAnnotatePage() {
                       setIndex(i);
                       setJumpOpen(false);
                     }}
-                    className={`border rounded-md overflow-hidden ${
-                      active ? "ring-2 ring-black" : "hover:shadow-sm"
-                    }`}
+                    className={`border rounded-md overflow-hidden ${active ? "ring-2 ring-black" : "hover:shadow-sm"
+                      }`}
                   >
                     <div className="w-full h-24 bg-gray-100 flex items-center justify-center relative">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -808,6 +823,6 @@ export default function GroundingAnnotatePage() {
           </div>
         </div>
       )}
-  </div>
-);
+    </div>
+  );
 }

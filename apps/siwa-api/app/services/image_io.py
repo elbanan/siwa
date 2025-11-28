@@ -19,7 +19,10 @@ from typing import Tuple, Optional
 
 import numpy as np
 from PIL import Image
-import pydicom
+try:
+    import pydicom
+except ImportError:  # pragma: no cover
+    pydicom = None
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".gif"}
@@ -54,6 +57,8 @@ def load_image_or_dicom(path: str) -> Image.Image:
         return Image.open(path).convert("RGB")
 
     if is_dicom(path):
+        if pydicom is None:
+            raise ValueError("pydicom not installed")
         ds = pydicom.dcmread(path)
         arr = ds.pixel_array.astype(np.float32)
 

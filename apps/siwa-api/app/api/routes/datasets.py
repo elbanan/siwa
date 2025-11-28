@@ -520,6 +520,89 @@ def inspect_csv_columns(
     return {"columns": columns}
 
 
+class CsvValuesRequest(BaseModel):
+    path: str
+    column: str
+    limit: int = 1000
+
+
+@router.post("/inspect/csv/values")
+def inspect_csv_values(
+    payload: CsvValuesRequest,
+    user=Depends(get_current_user),
+):
+    csv_path = os.path.expandvars(os.path.expanduser(payload.path))
+    if not os.path.isfile(csv_path):
+        raise HTTPException(status_code=404, detail=f"CSV file not found: {payload.path}")
+
+    unique_values = set()
+    try:
+        with open(csv_path, "r", newline="") as fh:
+            sample = fh.read(4096)
+            fh.seek(0)
+            try:
+                dialect = csv.Sniffer().sniff(sample)
+            except csv.Error:
+                dialect = csv.excel
+            reader = csv.DictReader(fh, dialect=dialect)
+            
+            if payload.column not in (reader.fieldnames or []):
+                raise HTTPException(status_code=400, detail=f"Column '{payload.column}' not found in CSV.")
+
+            for row in reader:
+                val = row.get(payload.column)
+                if val:
+                    val = val.strip()
+                    if not val:
+                        continue
+                        
+                    # Heuristic: if comma is present, assume comma-separated.
+                    # Otherwise, if space is present, assume space-separated.
+                    # This avoids splitting "traffic light" if the user meant it as one label,
+                    # unless they are mixing formats which is ambiguous anyway.
+                    if "," in val:
+                        parts = [p.strip() for p in val.split(",")]
+                    else:
+                        parts = [p.strip() for p in val.split(" ")]
+                        
+                    for p in parts:
+                        if p:
+                            unique_values.add(p)
+                            if len(unique_values) >= payload.limit:
+                                break
+                if len(unique_values) >= payload.limit:
+                    break
+    except Exception as exc:
+        # If it's already an HTTPException, re-raise it
+        if isinstance(exc, HTTPException):
+            raise exc
+        raise HTTPException(status_code=400, detail=f"Failed to read CSV: {exc}") from exc
+
+    return {"values": sorted(list(unique_values))}
+
+
+class FileInspectRequest(BaseModel):
+    path: str
+
+
+@router.post("/inspect/file")
+def inspect_file(
+    payload: FileInspectRequest,
+    user=Depends(get_current_user),
+):
+    file_path = os.path.expandvars(os.path.expanduser(payload.path))
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {payload.path}")
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to read file: {exc}") from exc
+
+    return {"content": content}
+
+
 @router.post("/{dataset_id}/validate", response_model=JobOut)
 def validate_dataset_endpoint(
     dataset_id: str,
@@ -728,10 +811,10 @@ def list_dataset_files(
             ann_status = ann.status or ("labeled" if labels else "unlabeled")
             classification_status_by_path[path] = ann_status
         elif default_label_map.get(path):
-            labels = [default_label_map[path]]
+            labels = default_label_map[path]
             classification_status_by_path[path] = "labeled"
         elif default_label_map.get(norm_path):
-            labels = [default_label_map[norm_path]]
+            labels = default_label_map[norm_path]
             classification_status_by_path[path] = "labeled"
         else:
             classification_status_by_path[path] = "unlabeled"

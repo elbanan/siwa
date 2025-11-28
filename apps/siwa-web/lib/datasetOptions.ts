@@ -4,8 +4,8 @@ export const DATASET_TYPES = [
 ];
 
 export const IMAGE_TASK_OPTIONS = [
-  { value: "classification", label: "Single Label Classification" },
-  { value: "multiclassification", label: "Multi Label Classification" },
+  { value: "classification", label: "Single-label Multiclass Classification" },
+  { value: "multiclassification", label: "Multi-label Classification" },
   { value: "detection", label: "Object detection" },
   // { value: "segmentation", label: "Segmentation" },
   { value: "captioning", label: "Captioning" },
@@ -25,6 +25,21 @@ export const SEGMENTATION_FORMATS = [
   { value: "bounding_box", label: "Bounding boxes" },
   // { value: "points", label: "Keypoints" },
   // { value: "other", label: "Other / custom" },
+];
+
+export const DETECTION_FORMATS = [
+  {
+    value: "yolo",
+    label: "YOLO txt (class x_center y_center width height, normalized)",
+  },
+  {
+    value: "pascal_voc",
+    label: "Pascal VOC (class xmin ymin xmax ymax, pixels)",
+  },
+  {
+    value: "coco_bbox",
+    label: "COCO bbox (class x y width height, pixels)",
+  },
 ];
 
 export const FILE_PATTERN_PRESETS = [

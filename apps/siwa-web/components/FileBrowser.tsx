@@ -20,6 +20,7 @@ interface BrowseItem {
 interface BrowseResponse {
     current_path: string;
     parent_path: string | null;
+    root_path: string;
     items: BrowseItem[];
 }
 
@@ -39,6 +40,7 @@ export default function FileBrowser({
     const [currentPath, setCurrentPath] = useState(initialPath);
     const [items, setItems] = useState<BrowseItem[]>([]);
     const [parentPath, setParentPath] = useState<string | null>(null);
+    const [rootPath, setRootPath] = useState<string>("/external/data");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -52,6 +54,7 @@ export default function FileBrowser({
             });
             setCurrentPath(res.data.current_path);
             setParentPath(res.data.parent_path);
+            setRootPath(res.data.root_path);
             setItems(res.data.items);
         } catch (e: any) {
             setError(
@@ -73,7 +76,13 @@ export default function FileBrowser({
     };
 
     const handleSelectCurrent = () => {
-        onSelect(`/external/data/${currentPath}`);
+        // Construct full path using rootPath
+        // If currentPath is empty, it's just rootPath
+        // If currentPath is not empty, it's rootPath/currentPath
+        const fullPath = currentPath
+            ? `${rootPath}/${currentPath}`.replace(/\/+/g, "/")
+            : rootPath;
+        onSelect(fullPath);
     };
 
     const handleGoToParent = () => {
@@ -123,7 +132,7 @@ export default function FileBrowser({
                             className="text-blue-600 hover:underline whitespace-nowrap"
                             onClick={() => handleBreadcrumbClick(-1)}
                         >
-                            /external/data
+                            {rootPath}
                         </button>
                         {breadcrumbParts.map((part, index) => (
                             <div key={index} className="flex items-center gap-2">
@@ -199,7 +208,10 @@ export default function FileBrowser({
                                     {(selectFiles || item.type === "directory") && (
                                         <button
                                             className="text-sm px-3 py-1 rounded-md border hover:bg-gray-50 whitespace-nowrap"
-                                            onClick={() => onSelect(`/external/data/${item.path}`)}
+                                            onClick={() => {
+                                                const fullPath = `${rootPath}/${item.path}`.replace(/\/+/g, "/");
+                                                onSelect(fullPath);
+                                            }}
                                         >
                                             Select
                                         </button>
@@ -213,7 +225,7 @@ export default function FileBrowser({
                 {/* Footer */}
                 <div className="border-t p-4 flex justify-between items-center gap-3">
                     <div className="text-sm text-gray-600 flex-1 truncate">
-                        Current: <span className="font-mono">/external/data/{currentPath || "/"}</span>
+                        Current: <span className="font-mono">{rootPath}/{currentPath}</span>
                     </div>
                     <div className="flex gap-2">
                         <button

@@ -27,8 +27,8 @@ def _read_csv_column(csv_path: str, column: str) -> Iterable[str]:
     return values
 
 
-def _build_csv_lookup(csv_path: str, image_column: str, label_column: str) -> Dict[str, str]:
-    lookup: Dict[str, str] = {}
+def _build_csv_lookup(csv_path: str, image_column: str, label_column: str) -> Dict[str, List[str]]:
+    lookup: Dict[str, List[str]] = {}
     if not os.path.isfile(csv_path):
         return lookup
     with open(csv_path, "r", newline="") as handle:
@@ -37,14 +37,26 @@ def _build_csv_lookup(csv_path: str, image_column: str, label_column: str) -> Di
             return lookup
         for row in reader:
             image_id = (row.get(image_column) or "").strip()
-            label = (row.get(label_column) or "").strip()
-            if not image_id or not label:
+            val = (row.get(label_column) or "").strip()
+            if not image_id or not val:
                 continue
+            
+            # Heuristic: if comma is present, assume comma-separated.
+            # Otherwise, if space is present, assume space-separated.
+            if "," in val:
+                labels = [p.strip() for p in val.split(",")]
+            else:
+                labels = [p.strip() for p in val.split(" ")]
+            
+            labels = [l for l in labels if l]
+            if not labels:
+                continue
+
             norm = image_id.replace("\\", "/")
             base = os.path.basename(norm)
             stem = os.path.splitext(base)[0]
             for key in {norm, base, stem}:
-                lookup[key] = label
+                lookup[key] = labels
     return lookup
 
 
@@ -73,7 +85,7 @@ def infer_class_names(dataset) -> list[str]:
     return sorted([c for c in existing if c])
 
 
-def class_counts_for_files(dataset, files: list[str]) -> Tuple[Dict[str, str], Dict[str, int]]:
+def class_counts_for_files(dataset, files: list[str]) -> Tuple[Dict[str, List[str]], Dict[str, int]]:
     """Return per-file labels and aggregate counts for classification datasets."""
     if dataset.task_type != "classification" or not files:
         return {}, {}
@@ -82,12 +94,12 @@ def class_counts_for_files(dataset, files: list[str]) -> Tuple[Dict[str, str], D
     if not ann:
         return {}, {}
 
-    labels_by_file: Dict[str, str] = {}
+    labels_by_file: Dict[str, List[str]] = {}
     counts: Counter[str] = Counter()
 
     cfg = ann.get("config") or {}
     fmt = ann.get("format")
-    lookup: Dict[str, str] = {}
+    lookup: Dict[str, List[str]] = {}
 
     if fmt == "csv":
         csv_path = _expand(cfg.get("path"))
@@ -99,15 +111,16 @@ def class_counts_for_files(dataset, files: list[str]) -> Tuple[Dict[str, str], D
     data_root = _expand(dataset.data_source.get("config", {}).get("path", ""))
 
     for file_path in files:
-        label = None
+        labels: List[str] = []
         if lookup:
             base = os.path.basename(file_path)
             stem = os.path.splitext(base)[0]
-            label = lookup.get(base) or lookup.get(stem)
-            if not label:
+            labels = lookup.get(base) or lookup.get(stem) or []
+            if not labels:
                 normalized_full = file_path.replace("\\", "/")
-                label = lookup.get(normalized_full)
-        if not label and data_root and fmt == "folder":
+                labels = lookup.get(normalized_full) or []
+        
+        if not labels and data_root and fmt == "folder":
             try:
                 rel = os.path.relpath(file_path, data_root)
             except ValueError:
@@ -116,13 +129,15 @@ def class_counts_for_files(dataset, files: list[str]) -> Tuple[Dict[str, str], D
             if parts:
                 candidate = parts[0]
                 if candidate and candidate != ".":
-                    label = candidate
-            if not label:
+                    labels = [candidate]
+            if not labels:
                 rel_norm = rel.replace("\\", "/")
-                label = lookup.get(rel_norm)
-        if label:
-            labels_by_file[file_path] = label
-            counts[label] += 1
+                labels = lookup.get(rel_norm) or []
+        
+        if labels:
+            labels_by_file[file_path] = labels
+            for l in labels:
+                counts[l] += 1
 
     class_counts = dict(counts)
     for cls in dataset.class_names or []:

@@ -20,10 +20,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
 
     # Root folder where Siwa stores cached/prepared data, previews, etc.
-    SIWA_HOME: str = "./siwa_data"
+    SIWA_HOME: str = str(Path(__file__).resolve().parents[3] / "siwa-data")
 
     # External data directory for user-mounted datasets
-    EXTERNAL_DATA_PATH: str = "/external/data"
+    EXTERNAL_DATA_PATH: str = ""
+    # EXTERNAL_DATA_PATH: str = ""
 
     # Used for CORS; locked to localhost by default
     FRONTEND_ORIGIN: str = "http://localhost:3000"

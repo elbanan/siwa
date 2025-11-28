@@ -14,7 +14,7 @@ from uuid import uuid4
 from datetime import datetime
 from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import os
@@ -31,6 +31,7 @@ from app.schemas.annotation_classification import (
     ClassificationBatchIn,
 )
 from app.services.annotation_insights import class_counts_for_files
+from app.services.dataset_scanner import refresh_dataset_cached_counts
 from app.services.local_scan import scan_local_folder
 
 router = APIRouter(prefix="/datasets", tags=["annotations-classification"])
@@ -51,19 +52,19 @@ def _normalize_key(value: str) -> str:
     return os.path.normpath(value).lower()
 
 
-def _default_label_lookup(ds: Dataset, files: list[str]) -> Dict[str, str]:
+def _default_label_lookup(ds: Dataset, files: list[str]) -> Dict[str, list[str]]:
     """
     Build a normalized lookup of default labels (from csv/folder config)
     for the provided file paths.
     """
     defaults, _ = class_counts_for_files(ds, files)
-    normalized: Dict[str, str] = {}
-    for raw_path, label in defaults.items():
+    normalized: Dict[str, list[str]] = {}
+    for raw_path, labels in defaults.items():
         norm_path = _normalize_key(raw_path)
-        normalized[norm_path] = label
+        normalized[norm_path] = labels
         base = os.path.basename(raw_path)
         if base:
-            normalized[_normalize_key(base)] = label
+            normalized[_normalize_key(base)] = labels
     return normalized
 
 
@@ -91,19 +92,19 @@ def get_classification_annotation(
     )
 
     defaults = _default_label_lookup(ds, [path])
-    def _default_for(p: str) -> str | None:
+    def _default_for(p: str) -> list[str]:
         key = _normalize_key(p)
         if key in defaults:
             return defaults[key]
         base = os.path.basename(p)
-        return defaults.get(_normalize_key(base))
+        return defaults.get(_normalize_key(base)) or []
 
     if not ann:
-        default_label = _default_for(path)
+        default_labels = _default_for(path)
         return ClassificationAnnOut(
             path=path,
-            status="labeled" if default_label else "unlabeled",
-            labels=[default_label] if default_label else [],
+            status="labeled" if default_labels else "unlabeled",
+            labels=default_labels,
         )
 
     return ClassificationAnnOut(
@@ -121,6 +122,7 @@ def get_classification_annotation(
 def upsert_classification_annotation(
     dataset_id: str,
     payload: ClassificationAnnUpsert,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -189,6 +191,7 @@ def upsert_classification_annotation(
         ds.status = "configured"
     db.add(ds)
     db.commit()
+    background.add_task(refresh_dataset_cached_counts, dataset_id)
 
     return ClassificationAnnOut(
         path=ann.file_path,
@@ -238,10 +241,10 @@ def classification_summary(
             continue
 
         # fallback to defaults inferred from dataset config only if no annotation exists
-        default_label = default_label_map.get(norm_path) or default_label_map.get(
+        default_labels = default_label_map.get(norm_path) or default_label_map.get(
             _normalize_key(os.path.basename(path))
         )
-        if default_label:
+        if default_labels:
             labeled += 1
 
     unlabeled = max(int(total) - labeled - skipped, 0)
@@ -301,7 +304,7 @@ def classification_batch(
     if not ds:
         raise HTTPException(404, "Dataset not found")
     ensure_dataset_access_level(db, user, dataset_id, "view")
-    default_labels: Dict[str, str] = _default_label_lookup(ds, payload.paths)
+    default_labels: Dict[str, list[str]] = _default_label_lookup(ds, payload.paths)
 
     def normalized_path(path: str) -> str:
         return os.path.normpath(path).lower()
@@ -316,11 +319,11 @@ def classification_batch(
             out[path] = {"status": ann.status, "labels": ann.labels or []}
             continue
 
-        label = default_labels.get(norm) or default_labels.get(
+        labels = default_labels.get(norm) or default_labels.get(
             normalized_path(os.path.basename(path))
         )
-        if label:
-            out[path] = {"status": "labeled", "labels": [label]}
+        if labels:
+            out[path] = {"status": "labeled", "labels": labels}
         else:
             out[path] = {"status": "unlabeled", "labels": []}
 
@@ -362,12 +365,12 @@ def export_classification_annotations(
                 }
             )
             continue
-        default_label = defaults.get(norm) or defaults.get(_normalize_key(os.path.basename(path)))
+        default_labels = defaults.get(norm) or defaults.get(_normalize_key(os.path.basename(path)))
         export_payload.append(
             {
                 "path": path,
-                "labels": [default_label] if default_label else [],
-                "status": "labeled" if default_label else "unlabeled",
+                "labels": default_labels if default_labels else [],
+                "status": "labeled" if default_labels else "unlabeled",
                 "annotated_by": None,
             }
         )

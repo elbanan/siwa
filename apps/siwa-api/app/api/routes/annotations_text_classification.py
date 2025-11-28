@@ -6,7 +6,7 @@ from uuid import uuid4
 from datetime import datetime
 from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -23,6 +23,7 @@ from app.schemas.annotation_text_classification import (
     TextClassificationSummary,
 )
 from app.services.text_dataset import read_text_rows
+from app.services.dataset_scanner import refresh_dataset_cached_counts
 
 
 router = APIRouter(prefix="/datasets", tags=["annotations-text-classification"])
@@ -87,6 +88,7 @@ def get_text_classification_annotation(
 def upsert_text_classification_annotation(
     dataset_id: str,
     payload: TextClassificationAnnUpsert,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -131,6 +133,7 @@ def upsert_text_classification_annotation(
         ann.updated_at = datetime.utcnow()
 
     db.commit()
+    background.add_task(refresh_dataset_cached_counts, dataset_id)
     db.refresh(ann)
 
     return TextClassificationAnnOut(
