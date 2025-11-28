@@ -4,3 +4,4 @@ node_modules/
 apps/siwa-api/siwa.db
 .DS_Store
 toggle_local_data.sh
+reproduce_issue.py
